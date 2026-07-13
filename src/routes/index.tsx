@@ -1,24 +1,34 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import "../linkpulse.css";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "LinkPulse — Rastreador de Links" },
+      { name: "description", content: "Acompanhe cliques e desempenho dos seus links de afiliado em tempo real." },
+      { property: "og:title", content: "LinkPulse — Rastreador de Links" },
+      { property: "og:description", content: "Acompanhe cliques e desempenho dos seus links de afiliado em tempo real." },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
+  const [App, setApp] = useState<React.ComponentType | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    import("../App").then((mod) => {
+      if (mounted) setApp(() => mod.default);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!App) {
+    return <div style={{ minHeight: "100vh", background: "#060B14" }} />;
+  }
+  return <App />;
 }

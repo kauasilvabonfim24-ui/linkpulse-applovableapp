@@ -32,7 +32,7 @@ const CUSTOM_COLORS = ["#F472B6","#22D3EE","#A78BFA","#FB923C","#34D399","#FBBF2
 type Platform = { label: string; color: string; commission: number };
 
 // ── Helpers ────────────────────────────────────────────────────────
-const genCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+const genCode = () => Math.random().toString(36).slice(2, 6).toUpperCase();
 const todayKey = () => new Date().toLocaleDateString("pt-BR");
 const fmtMoney = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 const fmtNum = (v: number) => new Intl.NumberFormat("pt-BR").format(v);

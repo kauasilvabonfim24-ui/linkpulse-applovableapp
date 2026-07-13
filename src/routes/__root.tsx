@@ -99,6 +99,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "LinkPulse — Rastreador de Links" },
+      { name: "twitter:description", content: "Acompanhe cliques e desempenho dos seus links de afiliado em tempo real." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/aF6nbuT4wphtTaaitDT1hC5aB3a2/social-images/social-1783912053495-icon-512.webp" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/aF6nbuT4wphtTaaitDT1hC5aB3a2/social-images/social-1783912053495-icon-512.webp" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -110,7 +114,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/icon-192.png" },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
     scripts: [
       {

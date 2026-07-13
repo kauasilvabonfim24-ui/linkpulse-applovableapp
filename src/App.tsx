@@ -13,7 +13,7 @@ interface AffLink {
 type UpdateInput = { name: string; url: string; platform: string; productValue: number; commission: number; valuePerClick: number };
 
 // ── Constants ──────────────────────────────────────────────────────
-const SHORT_BASE = "https://dsgxkhpeomdadzfkfadu.supabase.co/functions/v1/redirect/";
+const SHORT_BASE = `${typeof window !== "undefined" ? window.location.origin : "https://linkpulse-applovableapp.lovable.app"}/r/`;
 
 const PLATFORMS = [
   { label: "Hotmart",       color: "#FF6B35", commission: 50 },

@@ -24,7 +24,7 @@ function RedirectPage() {
       try {
         const { data: linkData, error: fetchError } = await supabase
           .from("links")
-          .select("id, url, name, commission")
+          .select("id, url")
           .eq("short", code)
           .single();
 
@@ -37,35 +37,29 @@ function RedirectPage() {
         const linkId = linkData.id as string;
         const targetUrl = linkData.url as string;
 
+        // Register the click (awaited → triggers Realtime for the dashboard).
         await supabase.from("click_events").insert({
           link_id: linkId,
           clicked_at: new Date().toISOString(),
           referrer: document.referrer || "Direto",
         });
 
-        // Dispara notificação push (mesma lógica anterior ao /r/:code)
+        // Fire push notification without blocking the redirect.
+        // Edge function computes counts server-side (faster, single round-trip).
+        // keepalive lets the request finish after navigation starts.
         try {
-          const startOfDay = new Date();
-          startOfDay.setHours(0, 0, 0, 0);
-          const [{ count: todayClicks }, { count: totalClicks }] = await Promise.all([
-            supabase
-              .from("click_events")
-              .select("*", { count: "exact", head: true })
-              .eq("link_id", linkId)
-              .gte("clicked_at", startOfDay.toISOString()),
-            supabase
-              .from("click_events")
-              .select("*", { count: "exact", head: true })
-              .eq("link_id", linkId),
-          ]);
-          await supabase.functions.invoke("notify-click", {
-            body: {
-              linkName: (linkData as any).name ?? "Link",
-              commission: (linkData as any).commission ?? 0,
-              todayClicks: todayClicks ?? 0,
-              totalClicks: totalClicks ?? 0,
+          const url = `${(supabase as any).supabaseUrl}/functions/v1/notify-click`;
+          const anonKey = (supabase as any).supabaseKey;
+          fetch(url, {
+            method: "POST",
+            keepalive: true,
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${anonKey}`,
+              "apikey": anonKey,
             },
-          });
+            body: JSON.stringify({ linkId }),
+          }).catch(() => {});
         } catch (notifyErr) {
           console.error("notify-click error:", notifyErr);
         }
@@ -80,6 +74,7 @@ function RedirectPage() {
 
     redirect();
   }, [code]);
+
 
   if (error) {
     return (

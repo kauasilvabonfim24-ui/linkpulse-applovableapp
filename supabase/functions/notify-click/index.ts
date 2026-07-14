@@ -8,18 +8,49 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  const { linkName, commission, todayClicks, totalClicks } = await req.json();
+
+  const body = await req.json().catch(() => ({} as any));
+  const { linkId, linkName: nameOverride, commission: commissionOverride } = body || {};
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  const { data } = await supabase.from("app_config").select("key, value");
-  const config: Record<string, string> = {};
-  (data || []).forEach((row: any) => { config[row.key] = row.value; });
+  // Load config + link + counts IN PARALLEL server-side to minimize latency.
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
 
-  await fetch("https://onesignal.com/api/v1/notifications", {
+  const [configRes, linkRes, todayRes, totalRes] = await Promise.all([
+    supabase.from("app_config").select("key, value"),
+    linkId
+      ? supabase.from("links").select("name, commission").eq("id", linkId).maybeSingle()
+      : Promise.resolve({ data: null } as any),
+    linkId
+      ? supabase
+          .from("click_events")
+          .select("*", { count: "exact", head: true })
+          .eq("link_id", linkId)
+          .gte("clicked_at", startOfDay.toISOString())
+      : Promise.resolve({ count: 0 } as any),
+    linkId
+      ? supabase
+          .from("click_events")
+          .select("*", { count: "exact", head: true })
+          .eq("link_id", linkId)
+      : Promise.resolve({ count: 0 } as any),
+  ]);
+
+  const config: Record<string, string> = {};
+  (configRes.data || []).forEach((row: any) => { config[row.key] = row.value; });
+
+  const linkName = (linkRes as any)?.data?.name ?? nameOverride ?? "Link";
+  const commission = (linkRes as any)?.data?.commission ?? commissionOverride ?? 0;
+  const todayClicks = (todayRes as any)?.count ?? 0;
+  const totalClicks = (totalRes as any)?.count ?? 0;
+
+  // Fire OneSignal — priority 10 + ttl 60 for immediate mobile push delivery.
+  const osRes = await fetch("https://onesignal.com/api/v1/notifications", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -34,10 +65,14 @@ serve(async (req) => {
         en: `${linkName} · ${todayClicks} hoje · ${totalClicks} total · 💰 R$ ${commission}`,
       },
       small_icon: "ic_stat_onesignal_default",
+      priority: 10,
+      ttl: 60,
+      android_channel_id: undefined,
     }),
   });
 
-  return new Response(JSON.stringify({ ok: true }), {
+  const osBody = await osRes.text();
+  return new Response(JSON.stringify({ ok: osRes.ok, status: osRes.status, os: osBody }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });

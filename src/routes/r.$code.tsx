@@ -24,7 +24,7 @@ function RedirectPage() {
       try {
         const { data: linkData, error: fetchError } = await supabase
           .from("links")
-          .select("id, url")
+          .select("id, url, name, commission")
           .eq("short", code)
           .single();
 
@@ -34,14 +34,41 @@ function RedirectPage() {
           return;
         }
 
-        const linkId = linkData.id;
-        const targetUrl = linkData.url;
+        const linkId = linkData.id as string;
+        const targetUrl = linkData.url as string;
 
         await supabase.from("click_events").insert({
           link_id: linkId,
           clicked_at: new Date().toISOString(),
           referrer: document.referrer || "Direto",
         });
+
+        // Dispara notificação push (mesma lógica anterior ao /r/:code)
+        try {
+          const startOfDay = new Date();
+          startOfDay.setHours(0, 0, 0, 0);
+          const [{ count: todayClicks }, { count: totalClicks }] = await Promise.all([
+            supabase
+              .from("click_events")
+              .select("*", { count: "exact", head: true })
+              .eq("link_id", linkId)
+              .gte("clicked_at", startOfDay.toISOString()),
+            supabase
+              .from("click_events")
+              .select("*", { count: "exact", head: true })
+              .eq("link_id", linkId),
+          ]);
+          await supabase.functions.invoke("notify-click", {
+            body: {
+              linkName: (linkData as any).name ?? "Link",
+              commission: (linkData as any).commission ?? 0,
+              todayClicks: todayClicks ?? 0,
+              totalClicks: totalClicks ?? 0,
+            },
+          });
+        } catch (notifyErr) {
+          console.error("notify-click error:", notifyErr);
+        }
 
         window.location.replace(targetUrl);
       } catch (err) {

@@ -15,7 +15,7 @@ interface LinkData {
 }
 
 function RedirectPage() {
-  const { code } = useParams({ from: "/r/:code" });
+  const { code } = useParams({ from: "/r/$code" });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 

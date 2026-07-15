@@ -24,7 +24,7 @@ function RedirectPage() {
       try {
         const { data: linkData, error: fetchError } = await supabase
           .from("links")
-          .select("id, url")
+          .select("id, url, clicks")
           .eq("short", code)
           .single();
 
@@ -36,6 +36,7 @@ function RedirectPage() {
 
         const linkId = linkData.id as string;
         const targetUrl = linkData.url as string;
+        const currentClicks = Number((linkData as any).clicks || 0);
 
         // Register the click (awaited → triggers Realtime for the dashboard).
         await supabase.from("click_events").insert({
@@ -43,6 +44,12 @@ function RedirectPage() {
           clicked_at: new Date().toISOString(),
           referrer: document.referrer || "Direto",
         });
+
+        // Increment persistent total on links (dashboard "Total" card reads this).
+        await supabase
+          .from("links")
+          .update({ clicks: currentClicks + 1 })
+          .eq("id", linkId);
 
         // Fire push notification without blocking the redirect.
         // Edge function computes counts server-side (faster, single round-trip).

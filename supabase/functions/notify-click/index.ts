@@ -61,8 +61,8 @@ serve(async (req) => {
       include_subscription_ids: [config.onesignal_subscription_id],
       headings: { pt: "📡 Novo clique!", en: "📡 Novo clique!" },
       contents: {
-        pt: `${linkName} · ${todayClicks} hoje · ${totalClicks} total · 💰 R$ ${commission}`,
-        en: `${linkName} · ${todayClicks} hoje · ${totalClicks} total · 💰 R$ ${commission}`,
+        pt: `${linkName} | Hoje: ${todayClicks} · Total: ${totalClicks} · 💰 R$ ${commission}`,
+        en: `${linkName} | Hoje: ${todayClicks} · Total: ${totalClicks} · 💰 R$ ${commission}`,
       },
       small_icon: "ic_stat_onesignal_default",
       priority: 10,

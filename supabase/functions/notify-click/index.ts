@@ -58,7 +58,8 @@ serve(async (req) => {
     },
     body: JSON.stringify({
       app_id: config.onesignal_app_id,
-      include_subscription_ids: [config.onesignal_subscription_id],
+      include_aliases: { external_id: ["owner-linkpulse"] },
+      target_channel: "push",
       headings: { pt: "📡 Novo clique!", en: "📡 Novo clique!" },
       contents: {
         pt: `${linkName} | Hoje: ${todayClicks} · Total: ${totalClicks} · 💰 R$ ${commission}`,

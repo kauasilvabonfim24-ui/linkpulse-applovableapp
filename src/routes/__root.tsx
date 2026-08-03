@@ -129,6 +129,10 @@ OneSignalDeferred.push(async function(OneSignal) {
     notifyButton: { enable: false },
     notificationIcon: "/icon-192.png",
   });
+  try { await OneSignal.login("owner-linkpulse"); } catch (e) {}
+  OneSignal.Notifications.addEventListener("permissionChange", async function(granted) {
+    if (granted) { try { await OneSignal.login("owner-linkpulse"); } catch (e) {} }
+  });
 });`,
       },
     ],

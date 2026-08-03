@@ -51,25 +51,9 @@ function RedirectPage() {
           .update({ clicks: currentClicks + 1 })
           .eq("id", linkId);
 
-        // Fire push notification without blocking the redirect.
-        // Edge function computes counts server-side (faster, single round-trip).
-        // keepalive lets the request finish after navigation starts.
-        try {
-          const url = `${(supabase as any).supabaseUrl}/functions/v1/notify-click`;
-          const anonKey = (supabase as any).supabaseKey;
-          fetch(url, {
-            method: "POST",
-            keepalive: true,
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${anonKey}`,
-              "apikey": anonKey,
-            },
-            body: JSON.stringify({ linkId }),
-          }).catch(() => {});
-        } catch (notifyErr) {
-          console.error("notify-click error:", notifyErr);
-        }
+        // A notificação push agora é disparada 100% server-side por um
+        // trigger/webhook no INSERT de click_events (ver docs/notify-click-webhook.sql).
+
 
         window.location.replace(targetUrl);
       } catch (err) {

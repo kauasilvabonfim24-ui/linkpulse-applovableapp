@@ -140,6 +140,7 @@ export default function App() {
     if (!(window as any).OneSignal) return showToast("OneSignal não carregou", "error");
     await (window as any).OneSignal.Notifications.requestPermission();
     const ok = (window as any).OneSignal.Notifications.permission;
+    if (ok) { try { await (window as any).OneSignal.login("owner-linkpulse"); } catch { /* noop */ } }
     setNotifPerm(ok ? "granted" : "default");
     ok ? showToast("Notificações ativadas! 🔔") : showToast("Permissão negada", "error");
   };

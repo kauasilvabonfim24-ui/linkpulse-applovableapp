@@ -1,92 +1,95 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseServer = createClient(
+  "https://dsgxkhpeomdadzfkfadu.supabase.co",
+  "sb_publishable_BdTgJVPErF9ta0z5vZZLLQ_V5nuSAqM",
+);
+
+const resolveAndRegisterClick = createServerFn({ method: "GET" })
+  .validator((code: unknown) => {
+    if (typeof code !== "string" || !code) {
+      throw new Error("Invalid code");
+    }
+    return code;
+  })
+  .handler(async ({ data: code }) => {
+    const { data: linkData, error } = await supabaseServer
+      .from("links")
+      .select("id, url, clicks")
+      .eq("short", code)
+      .single();
+
+    if (error || !linkData) {
+      return { url: null as string | null };
+    }
+
+    const linkId = linkData.id as string;
+    const targetUrl = linkData.url as string;
+    const currentClicks = Number((linkData as any).clicks || 0);
+
+    // Registra o clique e incrementa o contador em paralelo, no servidor,
+    // sem depender de JavaScript no navegador da pessoa que clicou.
+    await Promise.all([
+      supabaseServer.from("click_events").insert({
+        link_id: linkId,
+        clicked_at: new Date().toISOString(),
+        referrer: "Servidor",
+      }),
+      supabaseServer.from("links").update({ clicks: currentClicks + 1 }).eq("id", linkId),
+    ]);
+
+    return { url: targetUrl };
+  });
 
 export const Route = createFileRoute("/r/$code")({
   head: () => ({
     meta: [{ title: "Redirecionando..." }],
   }),
-  component: RedirectPage,
+  beforeLoad: async ({ params }) => {
+    const { url } = await resolveAndRegisterClick({ data: params.code });
+    if (url) {
+      throw redirect({ href: url });
+    }
+  },
+  component: NotFoundPage,
 });
 
-interface LinkData {
-  id: string;
-  url: string;
-}
-
-function RedirectPage() {
-  const { code } = useParams({ from: "/r/$code" });
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const redirect = async () => {
-      try {
-        const { data: linkData, error: fetchError } = await supabase
-          .from("links")
-          .select("id, url, clicks")
-          .eq("short", code)
-          .single();
-
-        if (fetchError || !linkData) {
-          setError("Link not found");
-          setLoading(false);
-          return;
-        }
-
-        const linkId = linkData.id as string;
-        const targetUrl = linkData.url as string;
-        const currentClicks = Number((linkData as any).clicks || 0);
-
-        // Register the click (awaited → triggers Realtime for the dashboard).
-        await supabase.from("click_events").insert({
-          link_id: linkId,
-          clicked_at: new Date().toISOString(),
-          referrer: document.referrer || "Direto",
-        });
-
-        // Increment persistent total on links (dashboard "Total" card reads this).
-        await supabase
-          .from("links")
-          .update({ clicks: currentClicks + 1 })
-          .eq("id", linkId);
-
-        // A notificação push agora é disparada 100% server-side por um
-        // trigger/webhook no INSERT de click_events (ver docs/notify-click-webhook.sql).
-
-
-        window.location.replace(targetUrl);
-      } catch (err) {
-        console.error("Redirect error:", err);
-        setError("An error occurred");
-        setLoading(false);
-      }
-    };
-
-    redirect();
-  }, [code]);
-
-
-  if (error) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#060B14", display: "flex", alignItems: "center", justifyContent: "center", color: "#FFF" }}>
-        <div style={{ textAlign: "center" }}>
-          <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "16px" }}>Link não encontrado</h1>
-          <p style={{ fontSize: "16px", color: "#94A3B8" }}>Este link pode ter expirado ou não existe.</p>
-          <a href="/" style={{ display: "inline-block", marginTop: "24px", padding: "12px 24px", background: "#0EA5E9", color: "#FFF", borderRadius: "8px", textDecoration: "none", fontWeight: "600" }}>
-            Voltar para LinkPulse
-          </a>
-        </div>
-      </div>
-    );
-  }
-
+function NotFoundPage() {
   return (
-    <div style={{ minHeight: "100vh", background: "#060B14", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ textAlign: "center", color: "#FFF" }}>
-        <div style={{ fontSize: "48px", marginBottom: "24px" }}>⏳</div>
-        <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "8px" }}>Redirecionando...</h1>
-        <p style={{ fontSize: "16px", color: "#94A3B8" }}>Você será redirecionado em breve.</p>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#060B14",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#FFF",
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "16px" }}>
+          Link não encontrado
+        </h1>
+        <p style={{ fontSize: "16px", color: "#94A3B8" }}>
+          Este link pode ter expirado ou não existe.
+        </p>
+        <a
+          href="/"
+          style={{
+            display: "inline-block",
+            marginTop: "24px",
+            padding: "12px 24px",
+            background: "#0EA5E9",
+            color: "#FFF",
+            borderRadius: "8px",
+            textDecoration: "none",
+            fontWeight: "600",
+          }}
+        >
+          Voltar para LinkPulse
+        </a>
       </div>
     </div>
   );

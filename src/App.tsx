@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
+import Auth from "./components/Auth";
 
 // ── Types ──────────────────────────────────────────────────────────
 interface ClickEvent { ts: number; ref: string; }
@@ -99,9 +101,10 @@ async function fetchAll(): Promise<AffLink[]> {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// App Root
+// Dashboard (painel logado) — cada usuário só vê/mexe nos próprios
+// links, garantido pelo RLS no banco + user_id em cada insert aqui.
 // ══════════════════════════════════════════════════════════════════
-export default function App() {
+function Dashboard({ userId }: { userId: string }) {
   const [links, setLinks] = useState<AffLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"home" | "create" | "detail">("home");
@@ -152,7 +155,7 @@ export default function App() {
     const { error } = await supabase.from("links").insert({
       name: input.name, url: input.url, short: code, platform: input.platform,
       product_value: input.productValue, commission: input.commission,
-      value_per_click: input.valuePerClick, clicks: 0,
+      value_per_click: input.valuePerClick, clicks: 0, user_id: userId,
     });
     if (error) { showToast("Erro ao criar", "error"); return; }
     setView("home"); showToast("Link criado! 🚀"); refresh();
@@ -191,6 +194,7 @@ export default function App() {
   return (
     <div className="root">
       {toast && <div className={`toast ${toast.type === "error" ? "toast-err" : "toast-ok"}`}>{toast.msg}</div>}
+      <button onClick={() => supabase.auth.signOut()} className="icon-btn" style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }} title="Sair da conta">Sair</button>
       {view === "home" && <HomeView links={links} notifPerm={notifPerm} onRequestNotif={requestNotif} onNew={() => setView("create")} onSelect={id => { setSelectedId(id); setView("detail"); }} onCopy={copyLink} />}
       {view === "create" && <CreateView onSave={createLink} onBack={() => setView("home")} />}
       {view === "detail" && selectedLink && <DetailView link={selectedLink} onBack={() => setView("home")} onCopy={copyLink} onDelete={() => deleteLink(selectedLink.id)} onUpdate={input => updateLink(selectedLink.id, input)} />}
@@ -676,4 +680,26 @@ function EditModal({ link, onClose, onSave }: { link: AffLink; onClose: () => vo
       </div>
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// App (portão de autenticação) — sem sessão mostra login/cadastro,
+// com sessão mostra o painel (Dashboard) já com o user_id certo.
+// ══════════════════════════════════════════════════════════════════
+export default function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  if (session === undefined) {
+    return <div style={{ minHeight: "100vh", background: "#060B14" }} />;
+  }
+  if (!session) {
+    return <Auth />;
+  }
+  return <Dashboard userId={session.user.id} />;
 }

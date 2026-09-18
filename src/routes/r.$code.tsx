@@ -17,7 +17,7 @@ const resolveAndRegisterClick = createServerFn({ method: "GET" })
   .handler(async ({ data: code }) => {
     const { data: linkData, error } = await supabaseServer
       .from("links")
-      .select("id, url, clicks")
+      .select("id, url, clicks, active")
       .eq("short", code)
       .single();
 
@@ -28,6 +28,14 @@ const resolveAndRegisterClick = createServerFn({ method: "GET" })
     const linkId = linkData.id as string;
     const targetUrl = linkData.url as string;
     const currentClicks = Number((linkData as any).clicks || 0);
+    const isActive = (linkData as any).active !== false;
+
+    // Link excluído no app (soft delete): continua redirecionando pro
+    // destino normalmente, mas não grava clique nem dispara notificação —
+    // isso é reservado só para links que ainda estão salvos/ativos no app.
+    if (!isActive) {
+      return { url: targetUrl };
+    }
 
     // Registra o clique e incrementa o contador em paralelo, no servidor,
     // sem depender de JavaScript no navegador da pessoa que clicou.

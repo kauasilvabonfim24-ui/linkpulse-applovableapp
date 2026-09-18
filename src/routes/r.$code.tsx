@@ -20,9 +20,14 @@ const resolveAndRegisterClick = createServerFn({ method: "GET" })
     // estiver ativo. Assim o redirect público não precisa de permissão
     // direta de escrita nas tabelas — importante agora que os links são
     // multi-tenant e protegidos por RLS por usuário.
-    const { data, error } = await supabaseServer.rpc("register_click", { p_short: code });
-    const targetUrl = !error && data && data.length > 0 ? data[0].target_url : null;
-    return { url: targetUrl as string | null };
+    // Cast pra "any": os tipos do Supabase não conhecem essa função
+    // porque ela foi criada via SQL direto, não pelo gerador de tipos.
+    const { data, error }: { data: any; error: any } = await (supabaseServer as any).rpc(
+      "register_click",
+      { p_short: code },
+    );
+    const targetUrl = !error && Array.isArray(data) && data.length > 0 ? data[0].target_url : null;
+    return { url: (targetUrl as string | null) };
   });
 
 export const Route = createFileRoute("/r/$code")({

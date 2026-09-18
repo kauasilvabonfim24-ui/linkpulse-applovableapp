@@ -111,8 +111,26 @@ function Dashboard({ userId }: { userId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>("default");
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
+  const [planLimit, setPlanLimit] = useState<{ maxLinks: number | null; planName: string } | null>(null);
 
   useEffect(() => { if ("Notification" in window) setNotifPerm(Notification.permission); }, []);
+
+  // Busca o plano do usuário (e trava o limite se o teste grátis já venceu
+  // e ele ainda não assinou — nesse caso usa os limites do plano Grátis).
+  useEffect(() => {
+    (async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("plan, plan_status, trial_ends_at")
+        .eq("id", userId)
+        .single();
+      if (!profile) return;
+      const trialExpired = profile.plan_status === "trial" && profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date();
+      const effectivePlanId = trialExpired ? "gratis" : profile.plan;
+      const { data: plan } = await supabase.from("plans").select("name, max_links").eq("id", effectivePlanId).single();
+      if (plan) setPlanLimit({ maxLinks: plan.max_links, planName: plan.name });
+    })();
+  }, [userId]);
 
   const refresh = useCallback(async () => { const d = await fetchAll(); setLinks(d); return d; }, []);
 
@@ -151,6 +169,10 @@ function Dashboard({ userId }: { userId: string }) {
   const copyLink = (short: string) => { navigator.clipboard?.writeText(short); showToast("Copiado! 📋"); };
 
   const createLink = async (input: UpdateInput) => {
+    if (planLimit && planLimit.maxLinks !== null && links.length >= planLimit.maxLinks) {
+      showToast(`Limite do plano ${planLimit.planName} atingido (${planLimit.maxLinks} links). Faça upgrade pra criar mais.`, "error");
+      return;
+    }
     const code = genCode();
     const { error } = await supabase.from("links").insert({
       name: input.name, url: input.url, short: code, platform: input.platform,
@@ -194,7 +216,14 @@ function Dashboard({ userId }: { userId: string }) {
   return (
     <div className="root">
       {toast && <div className={`toast ${toast.type === "error" ? "toast-err" : "toast-ok"}`}>{toast.msg}</div>}
-      <button onClick={() => supabase.auth.signOut()} className="icon-btn" style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }} title="Sair da conta">Sair</button>
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50, display: "flex", alignItems: "center", gap: 8 }}>
+        {planLimit && (
+          <span style={{ fontSize: 11, color: "#94A3B8", background: "#0B1220", border: "1px solid #1E293B", borderRadius: 999, padding: "4px 10px" }}>
+            {planLimit.planName} · {links.length}{planLimit.maxLinks !== null ? `/${planLimit.maxLinks}` : ""} links
+          </span>
+        )}
+        <button onClick={() => supabase.auth.signOut()} className="icon-btn" title="Sair da conta">Sair</button>
+      </div>
       {view === "home" && <HomeView links={links} notifPerm={notifPerm} onRequestNotif={requestNotif} onNew={() => setView("create")} onSelect={id => { setSelectedId(id); setView("detail"); }} onCopy={copyLink} />}
       {view === "create" && <CreateView onSave={createLink} onBack={() => setView("home")} />}
       {view === "detail" && selectedLink && <DetailView link={selectedLink} onBack={() => setView("home")} onCopy={copyLink} onDelete={() => deleteLink(selectedLink.id)} onUpdate={input => updateLink(selectedLink.id, input)} />}

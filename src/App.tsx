@@ -72,7 +72,7 @@ function getPlt(label: string, custom: Platform[]): Platform {
 // ── Data ───────────────────────────────────────────────────────────
 async function fetchAll(): Promise<AffLink[]> {
   const [{ data: links }, { data: events }] = await Promise.all([
-    supabase.from("links").select("*").order("created_at", { ascending: false }),
+    supabase.from("links").select("*").eq("active", true).order("created_at", { ascending: false }),
     supabase.from("click_events").select("link_id, clicked_at, referrer"),
   ]);
   if (!links) return [];
@@ -169,8 +169,11 @@ export default function App() {
   };
 
   const deleteLink = async (id: string) => {
+    // Soft delete: o link some do painel, mas continua existindo no banco
+    // pra que o /r/CODIGO continue redirecionando quem clicar nos grupos —
+    // só que sem contar clique nem notificar (ver src/routes/r.$code.tsx).
     setLinks(prev => prev.filter(l => l.id !== id)); setView("home");
-    const { error } = await supabase.from("links").delete().eq("id", id);
+    const { error } = await supabase.from("links").update({ active: false }).eq("id", id);
     if (error) { showToast("Erro ao remover", "error"); refresh(); } else showToast("Removido");
   };
 

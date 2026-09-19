@@ -107,30 +107,39 @@ async function fetchAll(): Promise<AffLink[]> {
 function Dashboard({ userId }: { userId: string }) {
   const [links, setLinks] = useState<AffLink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<"home" | "create" | "detail">("home");
+  const [view, setView] = useState<"home" | "create" | "detail" | "settings" | "referral">("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>("default");
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
-  const [planLimit, setPlanLimit] = useState<{ maxLinks: number | null; planName: string } | null>(null);
+  const [planLimit, setPlanLimit] = useState<{ maxLinks: number | null; planName: string; planId: string } | null>(null);
+  const [profileInfo, setProfileInfo] = useState<{ email: string; referralCode: string; bonusLinks: number } | null>(null);
+  const [referredCount, setReferredCount] = useState<{ total: number; converted: number } | null>(null);
 
   useEffect(() => { if ("Notification" in window) setNotifPerm(Notification.permission); }, []);
 
+  const loadProfile = useCallback(async () => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email, plan, plan_status, trial_ends_at, referral_code, bonus_links")
+      .eq("id", userId)
+      .single();
+    if (!profile) return;
+    const trialExpired = profile.plan_status === "trial" && profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date();
+    const effectivePlanId = trialExpired ? "gratis" : profile.plan;
+    const { data: plan } = await supabase.from("plans").select("name, max_links").eq("id", effectivePlanId).single();
+    if (plan) {
+      const maxLinks = plan.max_links === null ? null : plan.max_links + (profile.bonus_links || 0);
+      setPlanLimit({ maxLinks, planName: plan.name, planId: effectivePlanId });
+    }
+    setProfileInfo({ email: profile.email, referralCode: profile.referral_code, bonusLinks: profile.bonus_links || 0 });
+
+    const { data: referred } = await supabase.from("profiles").select("plan_status").eq("referred_by", userId);
+    if (referred) setReferredCount({ total: referred.length, converted: referred.filter(r => r.plan_status === "active").length });
+  }, [userId]);
+
   // Busca o plano do usuário (e trava o limite se o teste grátis já venceu
   // e ele ainda não assinou — nesse caso usa os limites do plano Grátis).
-  useEffect(() => {
-    (async () => {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("plan, plan_status, trial_ends_at")
-        .eq("id", userId)
-        .single();
-      if (!profile) return;
-      const trialExpired = profile.plan_status === "trial" && profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date();
-      const effectivePlanId = trialExpired ? "gratis" : profile.plan;
-      const { data: plan } = await supabase.from("plans").select("name, max_links").eq("id", effectivePlanId).single();
-      if (plan) setPlanLimit({ maxLinks: plan.max_links, planName: plan.name });
-    })();
-  }, [userId]);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
 
   const refresh = useCallback(async () => { const d = await fetchAll(); setLinks(d); return d; }, []);
 
@@ -231,11 +240,12 @@ function Dashboard({ userId }: { userId: string }) {
             {planLimit.planName} · {links.length}{planLimit.maxLinks !== null ? `/${planLimit.maxLinks}` : ""} links
           </span>
         )}
-        <button onClick={() => { (window as any).OneSignal?.logout?.().catch(() => {}); supabase.auth.signOut(); }} className="icon-btn" title="Sair da conta">Sair</button>
       </div>
-      {view === "home" && <HomeView links={links} notifPerm={notifPerm} onRequestNotif={requestNotif} onNew={() => setView("create")} onSelect={id => { setSelectedId(id); setView("detail"); }} onCopy={copyLink} />}
+      {view === "home" && <HomeView links={links} notifPerm={notifPerm} onRequestNotif={requestNotif} onNew={() => setView("create")} onSelect={id => { setSelectedId(id); setView("detail"); }} onCopy={copyLink} isFreePlan={planLimit?.planId === "gratis"} />}
       {view === "create" && <CreateView onSave={createLink} onBack={() => setView("home")} />}
       {view === "detail" && selectedLink && <DetailView link={selectedLink} onBack={() => setView("home")} onCopy={copyLink} onDelete={() => deleteLink(selectedLink.id)} onUpdate={input => updateLink(selectedLink.id, input)} />}
+      {view === "referral" && <ReferralView referralCode={profileInfo?.referralCode} bonusLinks={profileInfo?.bonusLinks || 0} referredCount={referredCount} onBack={() => setView("home")} onCopyLink={copyLink} />}
+      {view === "settings" && <SettingsView email={profileInfo?.email} planLimit={planLimit} onBack={() => setView("home")} onSignOut={() => { (window as any).OneSignal?.logout?.().catch(() => {}); supabase.auth.signOut(); }} />}
       <nav className="tab-bar">
         <button className={`tab ${(view === "home" || view === "detail") ? "tab-active" : ""}`} onClick={() => { setView("home"); setSelectedId(null); }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
@@ -244,6 +254,14 @@ function Dashboard({ userId }: { userId: string }) {
         <button className={`tab ${view === "create" ? "tab-active" : ""}`} onClick={() => setView("create")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
           <span>Novo Link</span>
+        </button>
+        <button className={`tab ${view === "referral" ? "tab-active" : ""}`} onClick={() => setView("referral")}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M20 12v10H4V12M2 7h20v5H2V7Z" /><path d="M12 22V7M12 7c-1.5-3-5.5-4-7-1.5S6 9 12 7Zm0 0c1.5-3 5.5-4 7-1.5S18 9 12 7Z" /></svg>
+          <span>Indicação</span>
+        </button>
+        <button className={`tab ${view === "settings" ? "tab-active" : ""}`} onClick={() => setView("settings")}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg>
+          <span>Ajustes</span>
         </button>
       </nav>
     </div>
@@ -320,9 +338,9 @@ function InstallNotifyButton({ notifPerm, onRequestNotif }: { notifPerm: string;
   );
 }
 
-function HomeView({ links, notifPerm, onRequestNotif, onNew, onSelect, onCopy }: {
+function HomeView({ links, notifPerm, onRequestNotif, onNew, onSelect, onCopy, isFreePlan }: {
   links: AffLink[]; notifPerm: string; onRequestNotif: () => void;
-  onNew: () => void; onSelect: (id: string) => void; onCopy: (s: string) => void;
+  onNew: () => void; onSelect: (id: string) => void; onCopy: (s: string) => void; isFreePlan?: boolean;
 }) {
   const [customPlatforms] = useCustomPlatforms();
   const [filter, setFilter] = useState("Todos");
@@ -351,6 +369,21 @@ function HomeView({ links, notifPerm, onRequestNotif, onNew, onSelect, onCopy }:
         </div>
         <InstallNotifyButton notifPerm={notifPerm} onRequestNotif={onRequestNotif} />
       </div>
+
+      {isFreePlan && (
+        // TODO Kauã: troca esse href pelo link de verdade do VendaBot.
+        <a href="https://vendabot.com.br" target="_blank" rel="noopener noreferrer" style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          background: "linear-gradient(90deg, rgba(14,165,233,0.14), rgba(52,211,153,0.10))",
+          border: "1px solid #1E293B", borderRadius: 14, padding: "14px 16px", margin: "0 0 18px", textDecoration: "none",
+        }}>
+          <div>
+            <div style={{ color: "#F1F5F9", fontWeight: 700, fontSize: 14 }}>📲 Conheça o VendaBot</div>
+            <div style={{ color: "#94A3B8", fontSize: 12.5, marginTop: 2 }}>Automatize o disparo dos seus links nos grupos de WhatsApp, sem precisar mandar manualmente.</div>
+          </div>
+          <span style={{ color: "#0EA5E9", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>Ver mais →</span>
+        </a>
+      )}
 
       {/* Hero metrics */}
       <div className="metrics-row">
@@ -780,6 +813,92 @@ function EditModal({ link, onClose, onSave }: { link: AffLink; onClose: () => vo
         </div>
         <button onClick={handleSave} className="btn-primary btn-full" style={{ marginTop: 16 }}>Salvar alterações</button>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Tela de Indicação
+// ══════════════════════════════════════════════════════════════════
+function ReferralView({ referralCode, bonusLinks, referredCount, onBack, onCopyLink }: {
+  referralCode?: string; bonusLinks: number; referredCount: { total: number; converted: number } | null;
+  onBack: () => void; onCopyLink: (s: string) => void;
+}) {
+  const link = referralCode ? `${window.location.origin}/?ref=${referralCode}` : "";
+  return (
+    <div className="screen">
+      <div className="header">
+        <button onClick={onBack} className="icon-btn" style={{ marginBottom: 12 }}>← Voltar</button>
+      </div>
+      <h1 className="brand-title" style={{ marginBottom: 6 }}>Indique e ganhe</h1>
+      <p className="muted" style={{ marginBottom: 22, fontSize: 14 }}>
+        Cada pessoa que assinar um plano pago pelo seu link te dá <strong style={{ color: "#F1F5F9" }}>+5 links de bônus</strong>, pra sempre, somando com o limite do seu plano.
+      </p>
+
+      <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: 14, padding: 16, marginBottom: 18 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>Seu link de indicação</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1, background: "#060B14", border: "1px solid #1E293B", borderRadius: 8, padding: "10px 12px", color: "#0EA5E9", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {link || "Carregando..."}
+          </div>
+          <button onClick={() => onCopyLink(link)} className="btn-primary" style={{ padding: "0 16px" }}>Copiar</button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 18 }}>
+        <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: 12, padding: 14, textAlign: "center" }}>
+          <div style={{ color: "#F1F5F9", fontSize: 22, fontWeight: 700 }}>{referredCount?.total ?? "–"}</div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>indicados</div>
+        </div>
+        <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: 12, padding: 14, textAlign: "center" }}>
+          <div style={{ color: "#34D399", fontSize: 22, fontWeight: 700 }}>{referredCount?.converted ?? "–"}</div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>assinaram</div>
+        </div>
+        <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: 12, padding: 14, textAlign: "center" }}>
+          <div style={{ color: "#0EA5E9", fontSize: 22, fontWeight: 700 }}>+{bonusLinks}</div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>links de bônus</div>
+        </div>
+      </div>
+
+      <p className="muted" style={{ fontSize: 12.5 }}>
+        O bônus é liberado assim que o pagamento do indicado é aprovado — pode levar alguns minutos pra aparecer aqui.
+      </p>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Tela de Configurações
+// ══════════════════════════════════════════════════════════════════
+function SettingsView({ email, planLimit, onBack, onSignOut }: {
+  email?: string; planLimit: { maxLinks: number | null; planName: string; planId: string } | null;
+  onBack: () => void; onSignOut: () => void;
+}) {
+  return (
+    <div className="screen">
+      <div className="header">
+        <button onClick={onBack} className="icon-btn" style={{ marginBottom: 12 }}>← Voltar</button>
+      </div>
+      <h1 className="brand-title" style={{ marginBottom: 22 }}>Ajustes</h1>
+
+      <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: 14, padding: 16, marginBottom: 14 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Conta</div>
+        <div style={{ color: "#F1F5F9", fontSize: 14 }}>{email || "..."}</div>
+      </div>
+
+      <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: 14, padding: 16, marginBottom: 14 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Plano atual</div>
+        <div style={{ color: "#F1F5F9", fontSize: 14, marginBottom: 14 }}>
+          {planLimit?.planName || "..."} {planLimit?.maxLinks !== null ? `· até ${planLimit?.maxLinks} links` : "· links ilimitados"}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <a href="https://pay.cakto.com.br/9aivs8b_1119807" target="_blank" rel="noopener noreferrer" className="btn-primary" style={{ flex: 1, textAlign: "center", textDecoration: "none", minWidth: 120 }}>Assinar Básico</a>
+          <a href="https://pay.cakto.com.br/wkrgo3z_1119818" target="_blank" rel="noopener noreferrer" className="btn-primary" style={{ flex: 1, textAlign: "center", textDecoration: "none", minWidth: 120 }}>Assinar Pro</a>
+        </div>
+        <p className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>Pra cancelar uma assinatura ativa, entre em contato pelo e-mail de suporte informado no seu recibo da Cakto.</p>
+      </div>
+
+      <button onClick={onSignOut} className="icon-btn icon-btn-danger btn-full" style={{ marginTop: 8 }}>Sair da conta</button>
     </div>
   );
 }

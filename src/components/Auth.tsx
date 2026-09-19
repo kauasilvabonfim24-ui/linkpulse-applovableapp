@@ -19,8 +19,15 @@ export default function Auth({ initialMode }: { initialMode?: "login" | "signup"
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error, data } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        // Se veio de um link de indicação, vincula agora que já tem sessão
+        // (o perfil já existe, criado automaticamente pelo trigger no banco).
+        const ref = localStorage.getItem("linkpulse_ref");
+        if (ref && data.session) {
+          await supabase.rpc("claim_referral", { p_code: ref }).catch(() => {});
+          localStorage.removeItem("linkpulse_ref");
+        }
         setInfo("Conta criada! Verifique seu e-mail para confirmar (se a confirmação estiver ativada) e depois faça login.");
         setMode("login");
       } else {

@@ -23,6 +23,12 @@ function Index() {
   const [Landing, setLanding] = useState<React.ComponentType | null>(null);
 
   useEffect(() => {
+    // Se a pessoa chegou por um link de indicação (?ref=CODIGO), guarda
+    // pra usar depois do cadastro — o link de indicação sempre cai na
+    // landing (rota /), nunca direto em /app.
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) localStorage.setItem("linkpulse_ref", ref);
+
     let mounted = true;
     import("../components/Landing").then((mod) => {
       if (mounted) setLanding(() => mod.default);

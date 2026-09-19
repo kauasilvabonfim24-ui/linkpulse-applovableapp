@@ -4,8 +4,8 @@ import { supabase } from "../lib/supabase";
 // Tela de login e criação de conta. Usa o Supabase Auth (e-mail + senha).
 // Ao criar conta, um trigger no banco (handle_new_user) já cria o perfil
 // do usuário automaticamente com 7 dias de teste grátis do plano Pro.
-export default function Auth() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+export default function Auth({ initialMode }: { initialMode?: "login" | "signup" }) {
+  const [mode, setMode] = useState<"login" | "signup">(initialMode === "signup" ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

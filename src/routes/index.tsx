@@ -1,34 +1,39 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import "../linkpulse.css";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "LinkPulse — Rastreador de Links" },
-      { name: "description", content: "Acompanhe cliques e desempenho dos seus links de afiliado em tempo real." },
-      { property: "og:title", content: "LinkPulse — Rastreador de Links" },
-      { property: "og:description", content: "Acompanhe cliques e desempenho dos seus links de afiliado em tempo real." },
+      { title: "LinkPulse — seus links de afiliado, rastreados em tempo real" },
+      { name: "description", content: "Encurte seus links de afiliado, divulgue nos grupos e acompanhe cada clique em tempo real." },
+      { property: "og:title", content: "LinkPulse — seus links de afiliado, rastreados em tempo real" },
+      { property: "og:description", content: "Encurte seus links de afiliado, divulgue nos grupos e acompanhe cada clique em tempo real." },
+    ],
+    links: [
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&display=swap",
+      },
     ],
   }),
   component: Index,
 });
 
 function Index() {
-  const [App, setApp] = useState<React.ComponentType | null>(null);
+  const [Landing, setLanding] = useState<React.ComponentType | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    import("../App").then((mod) => {
-      if (mounted) setApp(() => mod.default);
+    import("../components/Landing").then((mod) => {
+      if (mounted) setLanding(() => mod.default);
     });
     return () => {
       mounted = false;
     };
   }, []);
 
-  if (!App) {
+  if (!Landing) {
     return <div style={{ minHeight: "100vh", background: "#060B14" }} />;
   }
-  return <App />;
+  return <Landing />;
 }

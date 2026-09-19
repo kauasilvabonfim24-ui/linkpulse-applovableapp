@@ -372,7 +372,7 @@ function HomeView({ links, notifPerm, onRequestNotif, onNew, onSelect, onCopy, i
 
       {isFreePlan && (
         // TODO Kauã: troca esse href pelo link de verdade do VendaBot.
-        <a href="https://vendabot.com.br" target="_blank" rel="noopener noreferrer" style={{
+        <a href="https://vendabot-affiliate-hub.lovable.app" target="_blank" rel="noopener noreferrer" style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
           background: "linear-gradient(90deg, rgba(14,165,233,0.14), rgba(52,211,153,0.10))",
           border: "1px solid #1E293B", borderRadius: 14, padding: "14px 16px", margin: "0 0 18px", textDecoration: "none",

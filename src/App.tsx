@@ -715,7 +715,7 @@ function EditModal({ link, onClose, onSave }: { link: AffLink; onClose: () => vo
 // App (portão de autenticação) — sem sessão mostra login/cadastro,
 // com sessão mostra o painel (Dashboard) já com o user_id certo.
 // ══════════════════════════════════════════════════════════════════
-export default function App() {
+export default function App({ initialMode }: { initialMode?: "login" | "signup" }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
@@ -728,7 +728,7 @@ export default function App() {
     return <div style={{ minHeight: "100vh", background: "#060B14" }} />;
   }
   if (!session) {
-    return <Auth />;
+    return <Auth initialMode={initialMode} />;
   }
   return <Dashboard userId={session.user.id} />;
 }

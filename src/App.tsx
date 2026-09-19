@@ -157,11 +157,20 @@ function Dashboard({ userId }: { userId: string }) {
     setToast({ msg, type }); setTimeout(() => setToast(null), 3000);
   };
 
+  // Garante que esse dispositivo fique "marcado" com a conta certa no
+  // OneSignal assim que o painel carrega — essencial agora que cada
+  // usuário tem sua própria conta (antes era um "dono" fixo só).
+  useEffect(() => {
+    if ((window as any).OneSignal) {
+      (window as any).OneSignal.login(userId).catch(() => {});
+    }
+  }, [userId]);
+
   const requestNotif = async () => {
     if (!(window as any).OneSignal) return showToast("OneSignal não carregou", "error");
+    try { await (window as any).OneSignal.login(userId); } catch { /* noop */ }
     await (window as any).OneSignal.Notifications.requestPermission();
     const ok = (window as any).OneSignal.Notifications.permission;
-    if (ok) { try { await (window as any).OneSignal.login("owner-linkpulse"); } catch { /* noop */ } }
     setNotifPerm(ok ? "granted" : "default");
     ok ? showToast("Notificações ativadas! 🔔") : showToast("Permissão negada", "error");
   };
@@ -222,7 +231,7 @@ function Dashboard({ userId }: { userId: string }) {
             {planLimit.planName} · {links.length}{planLimit.maxLinks !== null ? `/${planLimit.maxLinks}` : ""} links
           </span>
         )}
-        <button onClick={() => supabase.auth.signOut()} className="icon-btn" title="Sair da conta">Sair</button>
+        <button onClick={() => { (window as any).OneSignal?.logout?.().catch(() => {}); supabase.auth.signOut(); }} className="icon-btn" title="Sair da conta">Sair</button>
       </div>
       {view === "home" && <HomeView links={links} notifPerm={notifPerm} onRequestNotif={requestNotif} onNew={() => setView("create")} onSelect={id => { setSelectedId(id); setView("detail"); }} onCopy={copyLink} />}
       {view === "create" && <CreateView onSave={createLink} onBack={() => setView("home")} />}
@@ -244,6 +253,73 @@ function Dashboard({ userId }: { userId: string }) {
 // ══════════════════════════════════════════════════════════════════
 // HomeView
 // ══════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// Botão único: baixa/instala o app quando possível e, na sequência,
+// já pede a permissão de notificação — tudo no mesmo clique.
+// No iOS (que não permite instalar via clique, só manualmente pelo
+// menu Compartilhar), mostra o passo a passo em vez de travar.
+// ══════════════════════════════════════════════════════════════════
+function InstallNotifyButton({ notifPerm, onRequestNotif }: { notifPerm: string; onRequestNotif: () => void }) {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSHelp, setShowIOSHelp] = useState(false);
+
+  useEffect(() => {
+    setIsStandalone(
+      window.matchMedia?.("(display-mode: standalone)").matches || (window.navigator as any).standalone === true
+    );
+    setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream);
+    const onPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", () => setDeferredPrompt(null));
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
+
+  const canInstall = !isStandalone && !!deferredPrompt;
+  const needsIOSManualInstall = !isStandalone && isIOS && !deferredPrompt;
+
+  const handleClick = async () => {
+    if (canInstall) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      // Só pede notificação depois se a pessoa realmente instalou —
+      // continua no mesmo fluxo de clique, sem precisar de um segundo toque.
+      if (choice?.outcome === "accepted") setTimeout(() => onRequestNotif(), 600);
+      return;
+    }
+    if (needsIOSManualInstall) { setShowIOSHelp(true); return; }
+    onRequestNotif();
+  };
+
+  const label = notifPerm === "granted"
+    ? "Notificações ativas"
+    : canInstall ? "Baixar app" : needsIOSManualInstall ? "Baixar app" : "Ativar notificações";
+
+  return (
+    <>
+      <button onClick={handleClick} className={`bell-btn ${notifPerm === "granted" ? "bell-on" : ""}`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+        {label}
+      </button>
+      {showIOSHelp && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end", zIndex: 100 }} onClick={() => setShowIOSHelp(false)}>
+          <div style={{ background: "#0B1220", border: "1px solid #1E293B", borderRadius: "16px 16px 0 0", padding: 24, width: "100%" }} onClick={e => e.stopPropagation()}>
+            <p style={{ color: "#FFF", fontWeight: 700, fontSize: 16, marginBottom: 12 }}>Instalar o LinkPulse no iPhone</p>
+            <ol style={{ color: "#CBD5E1", fontSize: 14, lineHeight: 1.8, paddingLeft: 20, marginBottom: 18 }}>
+              <li>Toque no ícone de Compartilhar (o quadrado com a setinha) na barra do Safari</li>
+              <li>Escolha "Adicionar à Tela de Início"</li>
+              <li>Abra o LinkPulse pelo ícone novo que vai aparecer — aí sim dá pra ativar as notificações</li>
+            </ol>
+            <button onClick={() => setShowIOSHelp(false)} className="btn-primary btn-full">Entendi</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function HomeView({ links, notifPerm, onRequestNotif, onNew, onSelect, onCopy }: {
   links: AffLink[]; notifPerm: string; onRequestNotif: () => void;
   onNew: () => void; onSelect: (id: string) => void; onCopy: (s: string) => void;
@@ -273,10 +349,7 @@ function HomeView({ links, notifPerm, onRequestNotif, onNew, onSelect, onCopy }:
           <p className="eyebrow">Rastreador de Afiliados</p>
           <h1 className="brand-title">Link<span className="brand-accent">Pulse</span></h1>
         </div>
-        <button onClick={onRequestNotif} className={`bell-btn ${notifPerm === "granted" ? "bell-on" : ""}`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-          {notifPerm === "granted" ? "Ativo" : "Ativar"}
-        </button>
+        <InstallNotifyButton notifPerm={notifPerm} onRequestNotif={onRequestNotif} />
       </div>
 
       {/* Hero metrics */}

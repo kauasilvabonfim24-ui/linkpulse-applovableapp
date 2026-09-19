@@ -129,10 +129,10 @@ OneSignalDeferred.push(async function(OneSignal) {
     notifyButton: { enable: false },
     notificationIcon: "/icon-192.png",
   });
-  try { await OneSignal.login("owner-linkpulse"); } catch (e) {}
-  OneSignal.Notifications.addEventListener("permissionChange", async function(granted) {
-    if (granted) { try { await OneSignal.login("owner-linkpulse"); } catch (e) {} }
-  });
+  // Não fazemos login aqui de propósito: isso rodaria até na landing
+  // page pública, sem usuário logado. O login com o ID certo de cada
+  // conta acontece dentro do painel (src/App.tsx), depois que a pessoa
+  // já está autenticada.
 });`,
       },
     ],
